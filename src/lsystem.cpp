@@ -362,14 +362,21 @@ glm::mat3 LSystem::rotate(const float degree, const int axis) {
 }
 
 // Generate the geometry corresponding to the string at the given iteration
-std::vector<glm::vec3> LSystem::createGeometry(std::string string) {
-	std::vector<glm::vec3> verts;
-	std::vector<glm::vec3> trunks;
-	std::vector<glm::vec3> branches;
-	std::vector<glm::vec3> twigs;
+std::vector<LSystem::LineData> LSystem::createGeometry(std::string string) {
+	std::vector<LineData> verts;
+	std::vector<LineData> trunks;
+	std::vector<LineData> branches;
+	std::vector<LineData> twigs;
 	trunk = 0;
 	branch = 0;
 	twig = 0;
+
+	//COLORS
+	glm::vec3 trunk_color = glm::vec3((float)64 / 255, (float)39 / 255, (float)39 / 255);
+	glm::vec3 branch_color = glm::vec3((float)92 / 255, (float)47 / 255, (float)47 / 255);
+	glm::vec3 twig_color = glm::vec3((float) 64 / 255, (float)39 / 255, (float)39 / 255);
+	glm::vec3 leaf_color = glm::vec3((float)33 / 255, (float)209 / 255, (float)97 / 255);
+
 
 	glm::vec3 cur_pos = glm::vec3(0, 1, 0);
 	std::stack<glm::vec3> pos_stack;
@@ -410,34 +417,34 @@ std::vector<glm::vec3> LSystem::createGeometry(std::string string) {
 				break;
 			default:
 				if (c == 'G') {
-					trunks.push_back(cur_pos);
+					trunks.emplace_back(cur_pos, trunk_color);
 					trunk++;
 				}
 				else if (c == 'F') {
-					branches.push_back(cur_pos);
+					branches.emplace_back(cur_pos, branch_color);
 					branch++;
 				}
 				else {
-					verts.push_back(cur_pos);
+					verts.emplace_back(cur_pos, leaf_color);
 				}
-				glm::vec3 temp = normalize(normalize(cur_pos) * rotate(cur_angle_x, 2));
-				cur_pos += temp * rotate(cur_angle_y, 1);
-				
-		/*		cur_pos += glm::vec3(normalize(glm::vec4(cur_pos,0)) * glm::rotate(float(glm::radians(cur_angle_x)), glm::vec3(0.f, 1.f, 0.f)) * 
-					glm::rotate(float(glm::radians(cur_angle_y)), glm::vec3(1.f,0.f,0.f)));*/
-				/*cur_pos.x += sin(glm::radians(cur_angle_y));
-				cur_pos.y += cos(glm::radians(cur_angle_y));
-				cur_pos.z = 0;*/
+				glm::vec3 temp = normalize(normalize(cur_pos) * rotate(cur_angle_y, 1));
+				cur_pos += temp * rotate(cur_angle_x, 2);
+
+				/*		cur_pos += glm::vec3(normalize(glm::vec4(cur_pos,0)) * glm::rotate(float(glm::radians(cur_angle_x)), glm::vec3(0.f, 1.f, 0.f)) *
+							glm::rotate(float(glm::radians(cur_angle_y)), glm::vec3(1.f,0.f,0.f)));*/
+							/*cur_pos.x += sin(glm::radians(cur_angle_y));
+							cur_pos.y += cos(glm::radians(cur_angle_y));
+							cur_pos.z = 0;*/
 				if (c == 'G') {
-					trunks.push_back(cur_pos);
+					trunks.emplace_back(cur_pos, trunk_color);
 					trunk++;
 				}
 				else if (c == 'F') {
-					branches.push_back(cur_pos);
+					branches.emplace_back(cur_pos, branch_color);
 					branch++;
 				}
 				else {
-					verts.push_back(cur_pos);
+					verts.emplace_back(cur_pos, leaf_color);
 				}
 		}
 		
@@ -454,7 +461,7 @@ std::vector<glm::vec3> LSystem::createGeometry(std::string string) {
 }
 
 // Add given geometry to the OpenGL vertex buffer and update state accordingly
-void LSystem::addVerts(std::vector<glm::vec3>& verts) {
+void LSystem::addVerts(std::vector<LineData>& verts) {
 	// Add iteration data
 	IterData id;
 	if (iterData.empty())
@@ -469,8 +476,8 @@ void LSystem::addVerts(std::vector<glm::vec3>& verts) {
 	glm::vec3 minBB = glm::vec3(std::numeric_limits<float>::max());
 	glm::vec3 maxBB = glm::vec3(std::numeric_limits<float>::lowest());
 	for (auto& v : verts) {
-		minBB = glm::min(minBB, v);
-		maxBB = glm::max(maxBB, v);
+		minBB = glm::min(minBB, v.pos);
+		maxBB = glm::max(maxBB, v.pos);
 	}
 	glm::vec3 diag = maxBB - minBB;
 	float scale = 1.9f / glm::max(glm::max(diag.x, diag.y), diag.z);
@@ -481,7 +488,7 @@ void LSystem::addVerts(std::vector<glm::vec3>& verts) {
 	id.bbfix[3] = glm::vec4(-(minBB + maxBB) * scale / 2.0f, 1.0f);
 	iterData.push_back(id);
 
-	GLsizei newSize = (id.first + id.count) * sizeof(glm::vec3);
+	GLsizei newSize = (id.first + id.count) * sizeof(LineData);
 	if (newSize > bufSize) {
 		// Create a new vertex buffer to hold vertex data
 		GLuint tempBuf;
@@ -507,11 +514,11 @@ void LSystem::addVerts(std::vector<glm::vec3>& verts) {
 	// Upload new vertex data
 
 	for (auto& v : verts) {
-		//printf("x: %f y: %f z: %f\n", v.x, v.y, v.z);
+		printf("x: %f y: %f z: %f\n", v.color.x, v.color.y, v.color.z);
 	}
 
 	glBufferSubData(GL_ARRAY_BUFFER,
-		id.first * sizeof(glm::vec3), id.count * sizeof(glm::vec3), verts.data());
+		id.first * sizeof(LineData), id.count * sizeof(LineData), verts.data());
 
 
 	// Reset vertex data source (format)
@@ -522,7 +529,9 @@ void LSystem::addVerts(std::vector<glm::vec3>& verts) {
 
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
 	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (GLvoid*)0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(LineData), NULL);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(LineData), (GLvoid*)sizeof(glm::vec3));
 
 	glBindVertexArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);

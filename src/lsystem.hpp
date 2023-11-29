@@ -44,10 +44,17 @@ public:
 		return strings.at(iter); }
 
 private:
+	struct LineData {
+		glm::vec3 pos;
+		glm::vec3 color;
+
+		LineData(glm::vec3 pos_, glm::vec3 color_) : pos(pos_), color(color_) {}
+	};
+
 	// Apply rules to a given string and return the result
 	std::string applyRules(std::string string);
 	// Create geometry for a given string and return the vertices
-	std::vector<glm::vec3> createGeometry(std::string string);
+	std::vector<LineData> createGeometry(std::string string);
 
 	std::vector<std::string> strings;	// String representation of each iteration
 	std::map<char, std::vector<Data>> rules;	// Generation rules
@@ -64,13 +71,14 @@ private:
 		glm::mat4 bbfix;	// Scale and rotate to [-1,1], centered at origin
 	};
 
+
 	// OpenGL state
 	static const GLsizei MAX_BUF = 1 << 26;		// Maximum buffer size
 	GLuint vao;							// Vertex array object
 	GLuint vbo;							// Vertex buffer
 	std::vector<IterData> iterData;		// Iteration data
 	GLsizei bufSize;					// Current size of the buffer
-	void addVerts(std::vector<glm::vec3>& verts);	// Add iter geometry to buffer
+	void addVerts(std::vector<LineData>& verts);	// Add iter geometry to buffer
 
 	// Shared OpenGL state (shader)
 	static unsigned int refcount;		// Reference counter
