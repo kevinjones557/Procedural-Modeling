@@ -1,0 +1,5 @@
+90
+3
+f+f+f+f
+f : f+s-ff+f+ff+fs+ff-s+ff-f-ff-fs-fff
+s : ssssss

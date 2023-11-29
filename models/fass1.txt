@@ -1,0 +1,5 @@
+60
+5
+f
+f : f+g++g-f--ff-g+
+g : -f+gg++g+f--f-g
