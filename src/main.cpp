@@ -6,6 +6,7 @@
 #include "lsystem.hpp"
 #include <GL/freeglut.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtx/transform.hpp>
 
 namespace fs = std::filesystem;
 
@@ -23,6 +24,9 @@ std::unique_ptr<LSystem> lsystem;
 unsigned int iter = 0;
 std::string lastFilename;
 int lastFilenameIdx = -1;
+
+float ang = 0;
+glm::vec3 axis = glm::vec3(1.f);
 
 // Initialization functions
 void initGLUT(int* argc, char** argv);
@@ -43,7 +47,7 @@ void cleanup();
 
 // Program entry point
 int main(int argc, char** argv) {
-	std::string configFile = "models/3Dtree.txt";
+	std::string configFile = "models/Cherry Blossom.txt";
 	if (argc > 1)
 		configFile = std::string(argv[1]);
 
@@ -53,7 +57,8 @@ int main(int argc, char** argv) {
 		initMenu();
 
 		// OpenGL settings
-		glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
+		glClearColor(1.f, 1.f, 1.f, 1.f);
+		//glClearColor(0.2f, 0.2f, 0.2f, 1.0f);
 		glClearDepth(1.0f);
 		glEnable(GL_DEPTH_TEST);
 
@@ -76,7 +81,8 @@ int main(int argc, char** argv) {
 			std::cerr << "Parse error: " << e.what() << std::endl;
 		}
 
-	} catch (const std::exception& e) {
+	}
+	catch (const std::exception& e) {
 		// Handle any errors
 		std::cerr << "Fatal error: " << e.what() << std::endl;
 		cleanup();
@@ -150,12 +156,12 @@ void display() {
 
 	float aspect = (float)width / (float)height;
 	glm::mat4 proj(1.0f);
-	
+
 	proj = proj * glm::ortho(-1.f, 1.f, -1.f, 1.f, -100.f, 100.f);
-		//glm::perspective(90.0f, 1.0f, 0.001f, 1000.0f);
-	// Draw the L-System
+	//glm::perspective(90.0f, 1.0f, 0.001f, 1000.0f);
+// Draw the L-System
 	if (lsystem && lsystem->getNumIter() > 0)
-		lsystem->drawIter(iter, proj);
+		lsystem->drawIter(iter, proj, glm::rotate(ang, axis));
 
 	// Scene is rendered to the back buffer, so swap the buffers to display it
 	glutSwapBuffers();
@@ -173,6 +179,60 @@ void keyPress(unsigned char key, int x, int y) {
 	switch (key) {
 	case ' ':
 		menu(MENU_REPARSE);
+		break;
+	case 'q':
+		if (axis != glm::vec3(1.f, 0.f, 0.f)) {
+			ang = .15;
+			axis = glm::vec3(1.f, 0.f, 0.f);
+		}
+		else {
+			ang += .15;
+		}
+		glutPostRedisplay();
+		break;
+	case 'w':
+		if (axis != glm::vec3(0.f, 1.f, 0.f)) {
+			ang = .15;
+			axis = glm::vec3(0.f, 1.f, 0.f);
+		}
+		else {
+			ang += .15;
+		}
+		glutPostRedisplay();
+		break;
+	case 'e':
+		if (axis != glm::vec3(0.f, 0.f, 1.f)) {
+			ang = .15;
+			axis = glm::vec3(0.f, 0.f, 1.f);
+		}
+		else {
+			ang += .15;
+		}
+		glutPostRedisplay();
+		break;
+	case 't':
+		lsystem->angle1 += 1;
+		lsystem->update();
+		glutPostRedisplay();
+		printf("angle1: %f\n", lsystem->angle1);
+		break;
+	case 'g':
+		lsystem->angle1 -= 1;
+		lsystem->update();
+		glutPostRedisplay();
+		printf("angle1: %f\n", lsystem->angle1);
+		break;
+	case 'r':
+		lsystem->angle2 += 5;
+		lsystem->update();
+		glutPostRedisplay();
+		printf("angle2: %f\n", lsystem->angle2);
+		break;
+	case 'f':
+		lsystem->angle2 -= 5;
+		lsystem->update();
+		glutPostRedisplay();
+		printf("angle2: %f\n", lsystem->angle2);
 		break;
 	}
 }

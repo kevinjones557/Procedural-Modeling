@@ -6,6 +6,7 @@
 #include <random>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/transform.hpp>
+#include <glm/gtx/norm.hpp>
 #include "util.hpp"
 
 // Stream processing helper functions
@@ -27,6 +28,24 @@ int getRandomNumber(int n) {
 	return distribution(gen); // Generate a random number within the specified range
 }
 
+bool doLineSegmentsIntersect(const glm::vec3& p0, const glm::vec3& p1, const glm::vec3& q0, const glm::vec3& q1) {
+	if (glm::compMax(glm::max(p0, p1)) < glm::compMin(glm::min(q0, q1)) ||
+		glm::compMin(glm::min(p0, p1)) > glm::compMax(glm::max(q0, q1))) {
+		return false; 
+	}
+
+	glm::vec3 cross1 = glm::cross(p1 - p0, q0 - p0);
+	glm::vec3 cross2 = glm::cross(p1 - p0, q1 - p0);
+
+	if (glm::length2(cross1) < glm::epsilon<float>() || glm::length2(cross2) < glm::epsilon<float>()) {
+		return false;
+	}
+
+	glm::vec3 cross3 = glm::cross(q1 - q0, p0 - q0);
+	glm::vec3 cross4 = glm::cross(q1 - q0, p1 - q0);
+
+	return (glm::dot(cross1, cross2) < 0.0f && glm::dot(cross3, cross4) < 0.0f);
+}
 
 // Constructor
 LSystem::LSystem() :
@@ -132,6 +151,35 @@ void LSystem::parse(std::istream& istr) {
 			inIters = std::stod(str);
 		}
 		else if (count == 4) {
+			int first_pos = str.find(',');
+			int second_pos = str.find(',', first_pos + 1);
+			trunk_color = glm::vec3(std::stod(str.substr(0, first_pos)) / 255, std::stod(str.substr(first_pos + 1, second_pos)) / 255,
+				std::stod(str.substr(second_pos + 1)) / 255);
+		}
+		else if (count == 5) {
+			int first_pos = str.find(',');
+			int second_pos = str.find(',', first_pos + 1);
+			branch_color = glm::vec3(std::stod(str.substr(0, first_pos)) / 255, std::stod(str.substr(first_pos + 1, second_pos)) / 255,
+				std::stod(str.substr(second_pos + 1)) / 255);
+		}
+		else if (count == 6) {
+			int first_pos = str.find(',');
+			int second_pos = str.find(',', first_pos + 1);
+			twig_color = glm::vec3(std::stod(str.substr(0, first_pos)) / 255, std::stod(str.substr(first_pos + 1, second_pos)) / 255,
+				std::stod(str.substr(second_pos + 1)) / 255);
+		}
+		else if (count == 7) {
+			int first_pos = str.find(',');
+			int second_pos = str.find(',', first_pos + 1);
+			leaf_color = glm::vec3(std::stod(str.substr(0, first_pos)) / 255, std::stod(str.substr(first_pos + 1, second_pos)) / 255,
+				std::stod(str.substr(second_pos + 1)) / 255);
+		}
+		else if (count == 8) {
+			int first_pos = str.find(',');
+			check_intersect = std::stod(str.substr(0, first_pos)) == 1 ? true : false;
+			show_intersect_color = std::stod(str.substr(first_pos + 1)) == 1 ? true : false;
+		}
+		else if (count == 9) {
 			inAxiom = str;
 		}
 		else {
@@ -223,7 +271,7 @@ unsigned int LSystem::iterate() {
 
 	// Check for too-large buffer
 	auto& id = iterData.back();
-	if ((id.first + id.count + verts.size()) * sizeof(glm::vec2) > MAX_BUF)
+	if ((id.first + id.count + verts.size()) * sizeof(glm::vec3) > MAX_BUF)
 		throw std::runtime_error("geometry exceeds maximum buffer size");
 
 
@@ -234,43 +282,62 @@ unsigned int LSystem::iterate() {
 	return getNumIter();
 }
 
+unsigned int LSystem::update() {
+	if (strings.empty()) return 0;
+
+	// Get geometry of new iteration
+	auto verts = createGeometry(strings.back());
+
+	// Check for too-large buffer
+	auto& id = iterData.back();
+	if ((id.first + id.count + verts.size()) * sizeof(glm::vec2) > MAX_BUF)
+		throw std::runtime_error("geometry exceeds maximum buffer size");
+
+	addVerts(verts);
+
+	return getNumIter();
+}
+
 // Draw the latest iteration of the L-System
-void LSystem::draw(glm::mat4 viewProj) {
+void LSystem::draw(glm::mat4 viewProj, glm::mat4 rotMat) {
 	if (!getNumIter()) return;
-	drawIter(getNumIter() - 1, viewProj);
+	drawIter(getNumIter() - 1, viewProj, rotMat);
 }
 
 // Draw a specific iteration of the L-System
-void LSystem::drawIter(unsigned int iter, glm::mat4 viewProj) {
+void LSystem::drawIter(unsigned int iter, glm::mat4 viewProj, glm::mat4 rotMat) {
+	if (iter == 0) {
+		int x = 0;
+	}
 	IterData& id = iterData.at(iter);
 
 	glUseProgram(shader);
 	glBindVertexArray(vao);
 
-	static float animation_iter = 0;
-	animation_iter += .1;
-	glm::mat4 rotMat = glm::rotate(animation_iter, glm::vec3(0.0, 1.0, 0.0));
+	//static float animation_iter = 0;
+	//animation_iter += .1;
+	//glm::mat4 rotMat = glm::rotate(animation_iter, glm::vec3(1.0, 0.0, 0.0));
 
 	// Send matrix to shader
 	glm::mat4 xform = viewProj * rotMat * id.bbfix;
 	glUniformMatrix4fv(xformLoc, 1, GL_FALSE, glm::value_ptr(xform));
 	// Draw L-System
 
-	glLineWidth(10.f);
+	glLineWidth(30.f);
 
-	glDrawArrays(GL_LINES, id.first, trunk);
+	glDrawArrays(GL_LINES, id.first, id.trunk);
 
-	glLineWidth(5.f);
+	glLineWidth(8.f);
 
-	glDrawArrays(GL_LINES, id.first + trunk, branch);
+	glDrawArrays(GL_LINES, id.first + id.trunk, id.branch);
 
-	glLineWidth(5.f);
+	glLineWidth(4.f);
 
-	glDrawArrays(GL_LINES, id.first + trunk +  branch, twig);
+	glDrawArrays(GL_LINES, id.first + id.trunk +  id.branch, id.twig);
 
-	glLineWidth(2.f);
+	glLineWidth(3.f);
 
-	glDrawArrays(GL_LINES, id.first + trunk + branch + twig, id.count - trunk - branch - twig);
+	glDrawArrays(GL_LINES, id.first + id.trunk + id.branch + id.twig, id.count - id.trunk - id.branch - id.twig);
 
 	//int n = 10;
 	//for (int i = 1; i <= n; i++) {
@@ -309,8 +376,6 @@ std::string LSystem::applyRules(std::string string) {
 			newstr += c;	
 		}
 	}
-	printf("string: %s\n", newstr.c_str());
-
 	// Replace this line with your implementation
 	return newstr;
 }
@@ -362,85 +427,134 @@ glm::mat3 LSystem::rotate(const float degree, const int axis) {
 }
 
 // Generate the geometry corresponding to the string at the given iteration
-std::vector<glm::vec3> LSystem::createGeometry(std::string string) {
-	std::vector<glm::vec3> verts;
-	std::vector<glm::vec3> trunks;
-	std::vector<glm::vec3> branches;
-	std::vector<glm::vec3> twigs;
+std::vector<LSystem::LineData> LSystem::createGeometry(std::string string) {
+	std::vector<LineData> verts;
+	std::vector<LineData> trunks;
+	std::vector<LineData> branches;
+	std::vector<LineData> twigs;
 	trunk = 0;
 	branch = 0;
 	twig = 0;
 
 	glm::vec3 cur_pos = glm::vec3(0, 1, 0);
-	std::stack<glm::vec3> pos_stack;
-	std::stack<glm::vec2> angle_stack;
-	double cur_angle_x = 0;
-	double cur_angle_y = 0;
+	glm::mat3 rot_mat = glm::mat3(1.f);
+	std::stack<glm::mat3> rot_stack;
+	std::stack < glm::vec3> pos_stack;
+
 	
 	for (char c : string) {
 		switch (c) {
 			case '+':
-				cur_angle_y += angle1;
+				rot_mat *= rotate(angle1, 1);
 				break;
 			case '-':
-				cur_angle_y -= angle1;
+				rot_mat *= rotate(-angle1, 1);
 				break;
 			case '*':
-				cur_angle_x += angle2;
+				rot_mat *= rotate(angle2, 2);
 				break;
 			case '^':
-				printf("\n");
-				cur_angle_x -= angle2;
+				rot_mat *= rotate(-angle2, 2);
 				break;
 			case '[':
 				pos_stack.push(cur_pos);
-				angle_stack.push(glm::vec2(cur_angle_x, cur_angle_y));
+				rot_stack.push(rot_mat);
 				break;
 			case ']':
 				cur_pos = pos_stack.top();
 				pos_stack.pop();
-				cur_angle_x = angle_stack.top()[0];
-				cur_angle_y = angle_stack.top()[1];
-				angle_stack.pop();
+				rot_mat = rot_stack.top();
+				rot_stack.pop();
 				break;
+			case 'N':
+			case 'n':
+			case 'p':
+			case 'o':
+			case 'i':
 			case 's':
 			case 'S':
-				cur_pos.x += sin(glm::radians(cur_angle_y));
-				cur_pos.y += cos(glm::radians(cur_angle_y));
 				break;
 			default:
-				if (c == 'G') {
-					trunks.push_back(cur_pos);
+				glm::vec3 temp_color = leaf_color;
+				if (c == 'G' || c == 'W' || c == 'w') {
+					trunks.emplace_back(cur_pos, trunk_color);
+					temp_color = trunk_color;
 					trunk++;
 				}
-				else if (c == 'F') {
-					branches.push_back(cur_pos);
+				else if (c == 'F' || c == 'f') {
+					branches.emplace_back(cur_pos, branch_color);
+					temp_color = branch_color;
 					branch++;
 				}
-				else {
-					verts.push_back(cur_pos);
+				else if (c == 'T' || c == 'Z' || c == 't' || c == 'z') {
+					twigs.emplace_back(cur_pos, twig_color);
+					temp_color = twig_color;
+					twig++;
 				}
-				glm::vec3 temp = normalize(normalize(cur_pos) * rotate(cur_angle_x, 2));
-				cur_pos += temp * rotate(cur_angle_y, 1);
-				
-		/*		cur_pos += glm::vec3(normalize(glm::vec4(cur_pos,0)) * glm::rotate(float(glm::radians(cur_angle_x)), glm::vec3(0.f, 1.f, 0.f)) * 
-					glm::rotate(float(glm::radians(cur_angle_y)), glm::vec3(1.f,0.f,0.f)));*/
-				/*cur_pos.x += sin(glm::radians(cur_angle_y));
-				cur_pos.y += cos(glm::radians(cur_angle_y));
-				cur_pos.z = 0;*/
-				if (c == 'G') {
-					trunks.push_back(cur_pos);
+				else {
+					verts.emplace_back(cur_pos, leaf_color);
+				}
+				glm::vec3 prev_loc = cur_pos;
+				cur_pos += rot_mat * glm::vec3(0.f, 1.f, 0.f);
+				if (check_intersect) {
+					for (int i = 0; i + 1 < verts.size(); i += 2) {
+						while (doLineSegmentsIntersect(prev_loc, cur_pos, verts[i].pos, verts[i + 1].pos)) {
+							cur_pos = prev_loc + (rot_mat * glm::mat3(glm::rotate(getRandomNumber(20) / (float)10, glm::vec3(1.f, 0.f, 0.f)))
+								* glm::mat3(glm::rotate(getRandomNumber(20) / (float)10, glm::vec3(0.f, 1.f, 0.f)))
+								* glm::mat3(glm::rotate(getRandomNumber(20) / (float)10, glm::vec3(0.f, 0.f, 1.f))) * glm::vec3(0.f, 1.f, 0.f));
+							if (show_intersect_color)
+								temp_color = glm::vec3(1, 0, 0);
+						}
+					}
+					for (int i = 0; i + 1 < trunks.size(); i += 2) {
+						while (doLineSegmentsIntersect(prev_loc, cur_pos, trunks[i].pos, trunks[i + 1].pos)) {
+							cur_pos = prev_loc + (rot_mat * glm::mat3(glm::rotate(getRandomNumber(20) / (float)10, glm::vec3(1.f, 0.f, 0.f)))
+								* glm::mat3(glm::rotate(getRandomNumber(20) / (float)10, glm::vec3(0.f, 1.f, 0.f)))
+								* glm::mat3(glm::rotate(getRandomNumber(20) / (float)10, glm::vec3(0.f, 0.f, 1.f))) * glm::vec3(0.f, 1.f, 0.f));
+							if (show_intersect_color)
+								temp_color = glm::vec3(1, 0, 0);
+						}
+					}
+					for (int i = 0; i + 1 < branches.size(); i += 2) {
+						while (doLineSegmentsIntersect(prev_loc, cur_pos, branches[i].pos, branches[i + 1].pos)) {
+							cur_pos = prev_loc + (rot_mat * glm::mat3(glm::rotate(getRandomNumber(20) / (float)10, glm::vec3(1.f, 0.f, 0.f)))
+								* glm::mat3(glm::rotate(getRandomNumber(20) / (float)10, glm::vec3(0.f, 1.f, 0.f)))
+								* glm::mat3(glm::rotate(getRandomNumber(20) / (float)10, glm::vec3(0.f, 0.f, 1.f))) * glm::vec3(0.f, 1.f, 0.f));
+							if (show_intersect_color)
+								temp_color = glm::vec3(1, 0, 0);
+						}
+					}
+					for (int i = 0; i + 1 < twigs.size(); i += 2) {
+						while (doLineSegmentsIntersect(prev_loc, cur_pos, twigs[i].pos, twigs[i + 1].pos)) {
+							cur_pos = prev_loc + (rot_mat * glm::mat3(glm::rotate(getRandomNumber(20) / (float)10, glm::vec3(1.f, 0.f, 0.f)))
+								* glm::mat3(glm::rotate(getRandomNumber(20) / (float)10, glm::vec3(0.f, 1.f, 0.f)))
+								* glm::mat3(glm::rotate(getRandomNumber(20) / (float)10, glm::vec3(0.f, 0.f, 1.f))) * glm::vec3(0.f, 1.f, 0.f));
+							if (show_intersect_color)
+								temp_color = glm::vec3(1, 0, 0);
+						}
+					}
+				}
+				if (c == 'G' || c == 'W' || c == 'w') {
+					trunks.emplace_back(cur_pos, temp_color);
 					trunk++;
 				}
-				else if (c == 'F') {
-					branches.push_back(cur_pos);
+				else if (c == 'F' || c == 'f') {
+					branches.emplace_back(cur_pos, temp_color);
 					branch++;
 				}
+				else if (c == 'T' || c == 'Z' || c == 't' || c == 'z') {
+					twigs.emplace_back(cur_pos, twig_color);
+					temp_color = twig_color;
+					twig++;
+				}
 				else {
-					verts.push_back(cur_pos);
+					verts.emplace_back(cur_pos, temp_color);
 				}
 		}
 		
+	}
+	for (int i = twig - 1; i >= 0; i--) {
+		verts.insert(verts.begin(), twigs[i]);
 	}
 	for (int i = branch - 1; i >= 0; i--) {
 		verts.insert(verts.begin(), branches[i]);
@@ -448,29 +562,32 @@ std::vector<glm::vec3> LSystem::createGeometry(std::string string) {
 	for (int i = trunk - 1; i >= 0; i--) {
 		verts.insert(verts.begin(), trunks[i]);
 	}
-	
 
 	return verts;
 }
 
 // Add given geometry to the OpenGL vertex buffer and update state accordingly
-void LSystem::addVerts(std::vector<glm::vec3>& verts) {
+void LSystem::addVerts(std::vector<LineData>& verts) {
 	// Add iteration data
 	IterData id;
-	if (iterData.empty())
-		id.first = 0;
-	else {
-		auto& lastID = iterData.back();
-		id.first = lastID.first + lastID.count;
-	}
+	//if (iterData.empty())
+	//	id.first = 0;
+	//else {
+	//	auto& lastID = iterData.back();
+	//	id.first = lastID.first + lastID.count;
+	//}
+	id.first = 0;
 	id.count = verts.size();
+	id.trunk = trunk;
+	id.branch = branch;
+	id.twig = twig;
 
 	// Calculate bounding box and create adjustment matrix
 	glm::vec3 minBB = glm::vec3(std::numeric_limits<float>::max());
 	glm::vec3 maxBB = glm::vec3(std::numeric_limits<float>::lowest());
 	for (auto& v : verts) {
-		minBB = glm::min(minBB, v);
-		maxBB = glm::max(maxBB, v);
+		minBB = glm::min(minBB, v.pos);
+		maxBB = glm::max(maxBB, v.pos);
 	}
 	glm::vec3 diag = maxBB - minBB;
 	float scale = 1.9f / glm::max(glm::max(diag.x, diag.y), diag.z);
@@ -481,7 +598,7 @@ void LSystem::addVerts(std::vector<glm::vec3>& verts) {
 	id.bbfix[3] = glm::vec4(-(minBB + maxBB) * scale / 2.0f, 1.0f);
 	iterData.push_back(id);
 
-	GLsizei newSize = (id.first + id.count) * sizeof(glm::vec3);
+	GLsizei newSize = (id.first + id.count) * sizeof(LineData);
 	if (newSize > bufSize) {
 		// Create a new vertex buffer to hold vertex data
 		GLuint tempBuf;
@@ -506,12 +623,12 @@ void LSystem::addVerts(std::vector<glm::vec3>& verts) {
 
 	// Upload new vertex data
 
-	for (auto& v : verts) {
-		//printf("x: %f y: %f z: %f\n", v.x, v.y, v.z);
-	}
+	//for (auto& v : verts) {
+	//	printf("x: %f y: %f z: %f\n", v.color.x, v.color.y, v.color.z);
+	//}
 
 	glBufferSubData(GL_ARRAY_BUFFER,
-		id.first * sizeof(glm::vec3), id.count * sizeof(glm::vec3), verts.data());
+		id.first * sizeof(LineData), id.count * sizeof(LineData), verts.data());
 
 
 	// Reset vertex data source (format)
@@ -522,18 +639,12 @@ void LSystem::addVerts(std::vector<glm::vec3>& verts) {
 
 	glBindBuffer(GL_ARRAY_BUFFER, vbo);
 	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), (GLvoid*)0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(LineData), NULL);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(LineData), (GLvoid*)sizeof(glm::vec3));
 
 	glBindVertexArray(0);
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-	//glEnableVertexAttribArray(1);
-
-	//GLuint vbo1;
-	//glGenBuffers(1, &vbo1);
-	//glBindBuffer(GL_ARRAY_BUFFER, vbo1);
-	//glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-	//glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(glm::vec3), (void*)0);
 
 }
 
